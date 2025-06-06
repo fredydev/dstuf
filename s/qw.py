@@ -1,84 +1,51 @@
-# Recréation du script après le reset de l'environnement
-
-script = """
-import subprocess
-import json
+import base64
+import requests
+import yaml
 
 # Configuration
-ORG_URL = "https://dev.azure.com/<ton-organisation>"
-OUTPUT_FILE = "matching_projects.txt"
+org = "votre_organisation"
+pat = "votre_pat_token"
+api_version = "7.1-preview.1"
+auth_header = {
+    "Authorization": "Basic " + base64.b64encode(f":{pat}".encode()).decode(),
+    "Content-Type": "application/json"
+}
+base_url = f"https://dev.azure.com/{org}"
 
-def run_az(command):
-    result = subprocess.run(["az"] + command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode != 0:
-        raise Exception(f"Erreur: {result.stderr}")
-    return result.stdout.strip()
+# 1. Récupérer la liste des projets
+def get_projects():
+    url = f"{base_url}/_apis/projects?api-version=6.0"
+    resp = requests.get(url, headers=auth_header)
+    return [proj["name"] for proj in resp.json()["value"]]
 
-def get_all_projects():
-    output = run_az(["devops", "project", "list", "--org", ORG_URL, "--query", "value[].name", "-o", "tsv"])
-    return output.splitlines()
-
+# 2. Récupérer les dépôts pour un projet donné
 def get_repos(project):
-    output = run_az(["repos", "list", "--project", project, "--org", ORG_URL, "--query", "[].name", "-o", "tsv"])
-    return output.splitlines()
+    url = f"{base_url}/{project}/_apis/git/repositories?api-version=6.0"
+    resp = requests.get(url, headers=auth_header)
+    return resp.json()["value"]
 
-def get_yaml_files(project, repo):
-    output = run_az([
-        "repos", "list-items",
-        "--project", project,
-        "--repository", repo,
-        "--path", "/",
-        "--recursive",
-        "--org", ORG_URL,
-        "--query", "[?ends_with(path, '.yml') || ends_with(path, '.yaml')].path",
-        "-o", "tsv"
-    ])
-    return output.splitlines()
+# 3. Récupérer les fichiers YAML dans un dépôt (racine seulement pour démo)
+def get_yaml_files(project, repo_id):
+    url = f"{base_url}/{project}/_apis/git/repositories/{repo_id}/items?recursionLevel=Full&api-version=6.0"
+    resp = requests.get(url, headers=auth_header)
+    return [item["path"] for item in resp.json()["value"] if item["path"].endswith(".yml")]
 
-def search_pipeline_task(project, repo, file_path, keyword):
-    content = run_az([
-        "repos", "item", "show",
-        "--project", project,
-        "--repository", repo,
-        "--path", file_path,
-        "--org", ORG_URL,
-        "--include-content",
-        "--query", "content",
-        "-o", "tsv"
-    ])
+# 4. Télécharger le contenu et chercher IAASPIPELINE
+def file_contains_keyword(project, repo_id, path, keyword):
+    url = f"{base_url}/{project}/_apis/git/repositories/{repo_id}/items?path={path}&api-version=6.0&includeContent=true"
+    resp = requests.get(url, headers=auth_header)
+    content = resp.text
     return keyword in content
 
-def main():
-    matching_projects = set()
-    projects = get_all_projects()
+# Execution
+matched_projects = []
+for proj in get_projects():
+    for repo in get_repos(proj):
+        repo_id = repo["id"]
+        for yml_path in get_yaml_files(proj, repo_id):
+            if file_contains_keyword(proj, repo_id, yml_path, "IAASPIPELINE"):
+                matched_projects.append((proj, repo["name"], yml_path))
 
-    for project in projects:
-        print(f"🔍 Projet: {project}")
-        repos = get_repos(project)
-
-        for repo in repos:
-            try:
-                files = get_yaml_files(project, repo)
-                for file in files:
-                    if search_pipeline_task(project, repo, file, "IAASPIPELINE"):
-                        print(f"✅ {project} / {repo} / {file}")
-                        matching_projects.add(project)
-                        break
-            except Exception as e:
-                print(f"⚠️ Erreur dans {project}/{repo}: {e}")
-
-    with open(OUTPUT_FILE, "w") as f:
-        for proj in sorted(matching_projects):
-            f.write(f"{proj}\\n")
-
-    print(f"\\n📄 Projets sauvegardés dans {OUTPUT_FILE}")
-
-if __name__ == "__main__":
-    main()
-"""
-
-script_path = "/mnt/data/check_iaaspipeline_usage_to_file.py"
-with open(script_path, "w") as f:
-    f.write(script)
-
-script_path
+# Affichage
+for match in matched_projects:
+    print(f"Projet: {match[0]} | Dépôt: {match[1]} | Fichier: {match[2]}")
