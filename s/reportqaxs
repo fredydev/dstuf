@@ -1,0 +1,50 @@
+# 🧰 Accompagnement DevSecOps – POC Nexus v2 pour le projet Pegasus (Equipe MLOps)
+
+## 📌 1. Contexte de l’accompagnement
+
+* **Equipe accompagnée** : Équipe MLOps (nom anonymisé)
+* **Objectif principal** : Mise en place d’un **POC Nexus v2** pour le projet **Pegasus**, déployant des configurations dans plusieurs environnements Appian
+* **Technologie concernée** : Appian (configuration via API), Azure DevOps, pipelines YAML
+* **Enjeux secondaires** : Conformité aux normes Nexus v2, gestion des secrets et des environnements
+
+## 🔍 2. Etat initial observé
+
+* L’équipe avait déjà utilisé Nexus v2 sur un autre projet : un **dossier devops existait** contenant les templates de pipeline Nexus
+* Environnements Appian définis (‘cert’, ‘test’, potentiellement ‘prod’), avec création partielle des environnements Azure DevOps
+* Incohérences de nomenclature : les environnements Azure DevOps ne suivaient pas la règle Nexus v2 (`-dv`, `-cr`, `-pr`, `-prod`)
+* Le pipeline utilisait un **paramètre `environment`** en build pour sélectionner dynamiquement le bon Variable Group contenant les credentials d'appel API vers Appian
+
+## 🦯 3. Etapes de l’accompagnement
+
+### 3.1 Initialisation et réutilisation
+
+* Audit du dossier `devops/` existant et vérification de la compatibilité Nexus v2
+* Reprise et adaptation des fichiers de CI/CD pour le projet Pegasus
+* Identification de la logique de déploiement via scripts Bash appelant l’API Appian
+
+### 3.2 Mise en place CI/CD Nexus v2
+
+* Configuration d’un pipeline CI conforme (validation, publication artefacts si applicable)
+* Construction du pipeline CD avec appel conditionnel de variables selon l’environnement Appian
+* Correction de la nomenclature des environnements Azure DevOps pour respecter les contraintes Nexus v2
+* Intégration du paramètre `environment` en build pour permettre la résolution dynamique des variables sensibles (token, url, etc.)
+
+## ⚠️ 4. Difficultés rencontrées
+
+* ❌ Blocage lors du déploiement initial à cause de la **non-conformité des noms d’environnements** Azure DevOps selon les règles Nexus v2
+* ❌ Gestion complexe des `Variable Groups` dynamiques selon l’environnement, nécessitant des ajustements dans les scripts Bash
+
+## ✅ 5. Résultats obtenus
+
+* Pipelines CI et CD conformes à Nexus v2
+* Déploiement opérationnel sur les environnements `-cr` et `-dv`
+* Résolution dynamique des secrets Appian selon l’environnement
+* Documentation partielle des conventions Nexus réutilisable pour d’autres projets similaires (Appian/config)
+
+## 🏦 6. Recommandations pour la suite
+
+* Mettre en place un système de stockage sécurisé pour les credentials Appian (Key Vault ou CyberArk si disponible)
+* Uniformiser les modèles de pipeline pour les futurs projets Appian
+* Mettre en place un pipeline de test syntaxique sur les scripts bash appelant Appian
+* Si le projet va jusqu’en production, vérifier les politiques de revue et approbation ServiceNow
+* Capitaliser sur ce POC pour intégrer d’autres projets similaires MLOps dans Nexus v2
