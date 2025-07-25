@@ -4,12 +4,12 @@
 
 ## 1. Introduction & Vue d’ensemble
 
-Ce projet fournit une tâche personnalisée Azure DevOps pour automatiser le déclenchement de déploiements SnapLogic via une API REST sécurisée.
+Cette tâche personnalisée Azure DevOps a été développée exclusivement pour automatiser le déclenchement de déploiements sur la plateforme SnapLogic, via son API REST sécurisée.
 
-**Toute l’intégration technique avec SnapLogic s’appuie sur un client TypeScript généré automatiquement à partir d’un contrat OpenAPI fourni par l’équipe SnapLogic.**
+**Tout le design du projet (client TypeScript généré à partir du contrat OpenAPI, gestion du token OIDC, logique des inputs, etc.) est entièrement orienté SnapLogic.**
 
 La tâche gère :
-- La récupération et l’injection sécurisée d’un token OIDC pour authentifier les appels SnapLogic
+- L’authentification OIDC et l’appel sécurisé de l’API SnapLogic
 - Le polling du statut de déploiement jusqu’à complétion
 - La cohérence stricte des environnements (DEV, QA, PROD)
 - La robustesse et la traçabilité des actions dans le pipeline
@@ -75,6 +75,7 @@ custom-task/
 - `entityEndpoint` : nom de la Service Connection Azure DevOps à utiliser. Ce paramètre est central : la tâche l’utilise pour :
     - Générer dynamiquement le token OIDC nécessaire à l’authentification SnapLogic
     - Récupérer dynamiquement l’URL cible de l’API SnapLogic (l’URL est stockée dans la Service Connection)
+    - **Note :** Pour QA et PP, la même URL de graduation SnapLogic est utilisée (mais chaque env a sa propre SC). PR utilise une URL différente et sa propre SC.
 
 > **Remarque :** Les Service Connections utilisées doivent être de **type custom** (Azure DevOps). Pour la procédure de création/configuration, voir la page interne « url ».
 
@@ -163,24 +164,6 @@ custom-task/
 
 ---
 
-## 7. Utilisation dans un pipeline Azure DevOps
-
-### Exemple YAML
-
-```yaml
-- task: SnapLogicGraduation@1
-  displayName: "Déploiement SnapLogic DEV"
-  inputs:
-    source: "ipaas"
-    destination: "ipaas.dev1"
-    snaplogicToken: $(dev-oidc-token)
-```
-
-- **Attention** :  
-  - Utiliser la SC correspondant à l’environnement cible.
-  - Ne jamais utiliser une SC prod sur une URL dev/cr, et inversement.
-
----
 
 ## 8. Tests et Qualité
 
@@ -195,12 +178,16 @@ custom-task/
 
 ## 9. Gestion des environnements
 
-- **Séparation stricte** entre DEV, CR, PRD dans la logique de la tâche.
-- **Vérification automatique** de la cohérence entre :
-  - l’URL cible,
-  - la valeur de `destination`,
-  - le nom de la Service Connection.
-- **Fail-fast** : la tâche échoue immédiatement en cas d’incohérence.
+- **Logique de graduation multi-environnements** :
+  - La tâche permet d’orchestrer une chaîne de promotions : de DV (développement) vers QA, de QA vers PP, puis de PP vers PR.
+  - Pour les environnements QA et PP, l’URL de graduation SnapLogic est identique (même endpoint), mais chaque environnement utilise sa propre Service Connection custom pour garantir l’isolation des accès.
+  - L’environnement PR (production) dispose d’une URL de graduation distincte et d’une Service Connection dédiée.
+- **Validation stricte** :
+  - À chaque exécution, la tâche vérifie la cohérence entre l’URL extraite de la Service Connection, la valeur de `destination` et le nom de la Service Connection.
+  - Toute incohérence (mauvaise URL, SC ou destination) entraîne un échec immédiat (“fail-fast”).
+
+> **Remarque pour les développeurs** :
+> La logique de mapping entre environnement, Service Connection et URL est centralisée dans le code. Si la matrice d’environnements évolue, il faudra adapter cette logique.
 
 ---
 
@@ -251,13 +238,9 @@ custom-task/
 
 ---
 
-## 14. Contexte d'intégration SnapLogic
+## 14. Rappel technique SnapLogic
 
-- L’intégration avec SnapLogic repose sur une API REST exposée par l’équipe SnapLogic, sans nécessité de connaissance métier côté DevOps.
-- Toute l’interface technique est décrite dans un contrat OpenAPI fourni par SnapLogic.
-- **Le client TypeScript utilisé par la tâche est systématiquement régénéré à partir de ce contrat à chaque build** : aucune modification manuelle du client généré n’est autorisée.
-- La gestion du token OIDC SnapLogic est entièrement automatisée : le code de la tâche prend en charge la récupération sécurisée du token, soit via les primitives Azure DevOps (extraction du token système avec `getEndpointAuthorization`), soit via une Service Connection custom selon la configuration du pipeline.
-- Après récupération, le token est injecté dynamiquement dans le client API (`api.accessToken = token`), garantissant ainsi une authentification robuste et conforme aux standards DevOps, sans manipulation manuelle de secrets par l’utilisateur.
+Tout le code, la génération du client et la gestion du token OIDC sont strictement dédiés à l’intégration avec SnapLogic : aucun usage générique n’est prévu.
 
 ---
 
