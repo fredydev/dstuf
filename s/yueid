@@ -165,7 +165,45 @@ custom-task/
 ---
 
 
-## 8. Tests et Qualité
+## 5. CI/CD
+
+### 5.1. Automatisation DevSecOps (CI/CD NexusV2)
+
+#### Contexte DevSecOps & NexusV2
+
+Cette tâche a été conçue pour s’intégrer dans le modèle DevSecOps “NexusV2” utilisé chez le client. Le répertoire `devops/` à la racine du projet contient tout le nécessaire pour automatiser le build et le déploiement de la tâche elle-même, selon les standards de sécurité et de conformité de l’organisation.
+
+#### Structure du répertoire `devops/`
+
+```
+devops/
+├── custom-task-ci.yml            # Pipeline CI : build, lint, tests, package
+├── custom-task-cd.yaml           # Pipeline CD : inclut les templates de sécurité/réglementation de l’organisation + appel du template local
+├── custom-task-cd-stages.yaml    # Template local : stages et jobs de déploiement de la tâche
+```
+
+- **custom-task-ci.yml** : Compile, teste et package la tâche (lint, scan de vulnérabilités, etc.).
+- **custom-task-cd.yaml** : Compose le pipeline de déploiement en important les templates de sécurité de l’organisation (autres repos) + appelle le template local.
+- **custom-task-cd-stages.yaml** : Définit les stages et jobs de déploiement (publication de la tâche, gestion des artefacts, etc.).
+
+#### Exemple d’inclusion de templates dans `custom-task-cd.yaml`
+
+```yaml
+# Exemple d’inclusion d’un template sécurité organisationnel + appel du template local
+extends:
+  template: path/to/org/security-template.yaml@securityRepo
+
+stages:
+  - template: custom-task-cd-stages.yaml
+```
+
+#### Points d’attention
+
+- **Conformité NexusV2** : Les pipelines CI/CD doivent respecter les exigences de NexusV2 (scans, approbations, publication contrôlée, etc.).
+- **Séparation des responsabilités** : Ton équipe est responsable du déploiement de la tâche elle-même, tandis que l’équipe SnapLogic consommera la tâche dans ses propres pipelines.
+- **Variables d’environnement, secrets, permissions** : À documenter selon les besoins du pipeline et les standards du client.
+
+### 5.2. Qualité & tests
 
 - **Tests unitaires** :  
   Couvrent les cas de succès, d’erreur, de polling, de gestion des statuts et de cohérence des inputs.
@@ -174,9 +212,38 @@ custom-task/
 - **Couverture** :  
   Viser >70% sur la logique métier critique.
 
+### 5.3. Packaging & build
+
+- Compile le code TypeScript en JavaScript avant publication :
+  ```sh
+  npm run build
+  ```
+- Le JS compilé est placé dans `dist/`.
+
+#### Packaging
+
+- Le package de la tâche doit contenir :
+  - JS compilé (`dist/`)
+  - `task.json`
+  - `node_modules` (ou les dépendances nécessaires)
+  - Client OpenAPI généré (ne jamais éditer manuellement)
+- Utilisation de `tfx` pour packager et publier la tâche sur Azure DevOps.
+
+#### Publication
+
+- Publier la tâche sur l’organisation Azure DevOps via :
+  ```sh
+  tfx build tasks upload --task-path .
+  ```
+
+### 5.4. Déploiement de la tâche
+
+- Description des stages et jobs de déploiement dans `custom-task-cd-stages.yaml`.
+- Publication sur Azure DevOps via les pipelines NexusV2.
+
 ---
 
-## 9. Gestion des environnements
+## 6. Gestion des environnements
 
 - **Logique de graduation multi-environnements** :
   - La tâche permet d’orchestrer une chaîne de promotions : de DV (développement) vers QA, de QA vers PP, puis de PP vers PR.
@@ -244,7 +311,45 @@ Tout le code, la génération du client et la gestion du token OIDC sont stricte
 
 ---
 
-## 15. Contact et support
+## 15. Documentation DevOps – Déploiement de la tâche (NexusV2)
+
+### 15.1. Contexte DevSecOps & NexusV2
+
+Cette tâche a été conçue pour s’intégrer dans le modèle DevSecOps “NexusV2” utilisé chez le client. Le répertoire `devops/` à la racine du projet contient tout le nécessaire pour automatiser le build et le déploiement de la tâche elle-même, selon les standards de sécurité et de conformité de l’organisation.
+
+### 15.2. Structure du répertoire `devops/`
+
+```
+devops/
+├── custom-task-ci.yml            # Pipeline CI : build, lint, tests, package
+├── custom-task-cd.yaml           # Pipeline CD : inclut les templates de sécurité/réglementation de l’organisation + appel du template local
+├── custom-task-cd-stages.yaml    # Template local : stages et jobs de déploiement de la tâche
+```
+
+- **custom-task-ci.yml** : Compile, teste et package la tâche (lint, scan de vulnérabilités, etc.).
+- **custom-task-cd.yaml** : Compose le pipeline de déploiement en important les templates de sécurité de l’organisation (autres repos) + appelle le template local.
+- **custom-task-cd-stages.yaml** : Définit les stages et jobs de déploiement (publication de la tâche, gestion des artefacts, etc.).
+
+### 15.3. Exemple d’inclusion de templates dans `custom-task-cd.yaml`
+
+```yaml
+# Exemple d’inclusion d’un template sécurité organisationnel + appel du template local
+extends:
+  template: path/to/org/security-template.yaml@securityRepo
+
+stages:
+  - template: custom-task-cd-stages.yaml
+```
+
+### 15.4. Points d’attention
+
+- **Conformité NexusV2** : Les pipelines CI/CD doivent respecter les exigences de NexusV2 (scans, approbations, publication contrôlée, etc.).
+- **Séparation des responsabilités** : Ton équipe est responsable du déploiement de la tâche elle-même, tandis que l’équipe SnapLogic consommera la tâche dans ses propres pipelines.
+- **Variables d’environnement, secrets, permissions** : À documenter selon les besoins du pipeline et les standards du client.
+
+---
+
+## 16. Contact et support
 
 Pour toute question technique, contacter :  
 - **Equipe DevOps** : dev_sup_integration@zz.com
