@@ -1,0 +1,227 @@
+# 📖 Documentation Technique – Azure DevOps Custom Task : SnapLogic Graduation
+
+---
+
+## 1. Objectif du Projet
+
+Développer une tâche personnalisée Azure DevOps permettant de déclencher un déploiement SnapLogic (API REST sécurisée) dans un pipeline CI/CD, avec :
+
+- Gestion stricte des environnements (DEV, CR, PRD)
+- Authentification OIDC via Service Connection Azure DevOps
+- Utilisation d’un client OpenAPI généré pour la communication avec SnapLogic
+- Logging, polling du statut, gestion des erreurs et robustesse de la chaîne CI/CD
+
+---
+
+## 2. Architecture du Projet
+
+```
+custom-task/
+├── src/
+│   ├── GraduationTask.ts         # Logique principale de la tâche
+│   ├── client/
+│   │   ├── api/                  # Client OpenAPI généré (GraduationApi, Status, etc.)
+│   │   └── model/
+│   ├── test/
+│   │   └── task.test.ts          # Tests unitaires
+│   ├── task.json                 # Déclaration de la tâche Azure DevOps
+│   ├── README.md                 # Documentation utilisateur
+│   └── openapi.yaml              # Contrat OpenAPI SnapLogic
+├── dist/                         # JS compilé pour exécution
+├── package.json                  # Dépendances et scripts
+├── tsconfig.json                 # Configuration TypeScript
+└── .eslintrc.json                # Linting
+```
+
+---
+
+## 3. Fonctionnement de la Tâche
+
+### Entrées principales (`task.json`)
+
+- `source` : nom du projet source à déployer (ex : `ipaas`)
+- `destination` : environnement cible (`ipaas.dev1`, `ipaas.cr1`, `ipaas.pr1`)
+- `snaplogicToken` : Token OIDC (injecté par une Service Connection Azure DevOps)
+- `serviceConnection` : (optionnel) ID de la Service Connection utilisée (pour contrôle de cohérence)
+
+**Variables pipeline utilisées** :
+- `SYSTEM_TEAMPROJECT`, `SYSTEM_TEAMFOUNDATIONCOLLECTIONURI`, `BUILD_BUILDID`, `BUILD_REQUESTEDFOREMAIL` (pour le contexte release)
+
+### Étapes principales
+
+1. **Récupération des inputs et variables**
+2. **Vérification de la cohérence environnementale**  
+   (destination, URL et Service Connection doivent cibler le même env)
+3. **Initialisation du client SnapLogic (OpenAPI)**
+4. **Injection du token OIDC dans le client**
+5. **Appel de l’API SnapLogic pour déclencher le déploiement**
+6. **Polling du statut du déploiement (toutes les 3s)**
+7. **Logging du statut à chaque itération (mode debug recommandé)**
+8. **Gestion des statuts de retour (success, failed, running)**
+9. **Gestion des erreurs et logs détaillés**
+
+---
+
+## 4. Sécurité
+
+- **Authentification** :  
+  Utilisation d’un token OIDC fourni par une Service Connection Azure DevOps de type “Generic” ou “OIDC”.
+- **Séparation stricte des environnements** :  
+  La tâche vérifie que la SC, l’URL et le paramètre `destination` correspondent au même environnement (dev, cr, prd).
+- **Gestion des secrets** :  
+  Le token n’est jamais loggué en clair. Les inputs secrets sont marqués `isSecret` dans `task.json`.
+- **Protection contre les erreurs de configuration** :  
+  La tâche échoue explicitement si une incohérence est détectée (ex : SC prod sur env dev).
+
+---
+
+## 5. Développement
+
+### Langages et outils
+
+- TypeScript (target ES2020+)
+- Node.js 16+ (exécution sur agent Ubuntu-latest)
+- Client OpenAPI généré via :
+  ```sh
+  npx @openapitools/openapi-generator-cli generate -i openapi.yaml -g typescript-node -o src/client --additional-properties=useSingleRequestParameter=true,typescriptThreePlus=true
+  ```
+- Linting via ESLint (`npm run lint`)
+- Tests unitaires via Mocha/Chai (`npm test`)
+
+### Principaux fichiers
+
+- `GraduationTask.ts` : logique de la tâche, gestion du polling, des erreurs, des statuts et de la sécurité.
+- `client/api/graduationApi.ts` : client généré, méthodes `deploy`, `getStatusById`, injection du token via `accessToken`.
+- `test/task.test.ts` : tests unitaires avec mocks du client généré.
+
+### Gestion des dépendances
+
+- Dépendances Node.js : `azure-devops-node-api`, `azure-pipelines-task-lib`, `request`, etc.
+- Toutes les dépendances sont listées dans `package.json`.
+
+---
+
+## 6. Déploiement et Packaging
+
+### Compilation
+
+- Compile le code TypeScript en JavaScript avant publication :
+  ```sh
+  npm run build
+  ```
+- Le JS compilé est placé dans `dist/`.
+
+### Packaging
+
+- Le package de la tâche doit contenir :
+  - JS compilé (`dist/`)
+  - `task.json`
+  - `node_modules` (ou les dépendances nécessaires)
+  - Client OpenAPI généré (ne jamais éditer manuellement)
+- Utilisation de `tfx` pour packager et publier la tâche sur Azure DevOps.
+
+### Publication
+
+- Publier la tâche sur l’organisation Azure DevOps via :
+  ```sh
+  tfx build tasks upload --task-path .
+  ```
+
+---
+
+## 7. Utilisation dans un pipeline Azure DevOps
+
+### Exemple YAML
+
+```yaml
+- task: SnapLogicGraduation@1
+  displayName: "Déploiement SnapLogic DEV"
+  inputs:
+    source: "ipaas"
+    destination: "ipaas.dev1"
+    snaplogicToken: $(dev-oidc-token)
+```
+
+- **Attention** :  
+  - Utiliser la SC correspondant à l’environnement cible.
+  - Ne jamais utiliser une SC prod sur une URL dev/cr, et inversement.
+
+---
+
+## 8. Tests et Qualité
+
+- **Tests unitaires** :  
+  Couvrent les cas de succès, d’erreur, de polling, de gestion des statuts et de cohérence des inputs.
+- **Linting** :  
+  ESLint avec configuration stricte pour garantir la cohérence du code.
+- **Couverture** :  
+  Viser >70% sur la logique métier critique.
+
+---
+
+## 9. Gestion des environnements
+
+- **Séparation stricte** entre DEV, CR, PRD dans la logique de la tâche.
+- **Vérification automatique** de la cohérence entre :
+  - l’URL cible,
+  - la valeur de `destination`,
+  - le nom de la Service Connection.
+- **Fail-fast** : la tâche échoue immédiatement en cas d’incohérence.
+
+---
+
+## 10. Logging et Debug
+
+- Utiliser `tl.debug()` pour les logs détaillés.
+- Activer le mode debug dans le pipeline pour voir les logs en temps réel :
+  - Ajouter la variable pipeline : `System.Debug=true`
+- Les logs de polling sont visibles à chaque itération en mode debug.
+
+---
+
+## 11. Maintenance et évolution
+
+- **Pour régénérer le client OpenAPI** :  
+  Voir la commande en section développement.  
+  Ne jamais éditer le code généré à la main.
+- **Pour ajouter un nouvel environnement** :  
+  Ajouter la logique de détection dans la fonction de cohérence.
+- **Pour migrer vers une nouvelle version d’API** :  
+  Mettre à jour le fichier `openapi.yaml` et régénérer le client.
+- **Pour ajouter des tests** :  
+  Ajouter des cas dans `test/task.test.ts` en mockant le client généré.
+
+---
+
+## 12. Sécurité et bonnes pratiques DevOps
+
+- **Jamais de secrets en clair dans les logs ou le code.**
+- **Respect des permissions minimales** sur les Service Connections.
+- **Versioning sémantique** de la tâche (`task.json`).
+- **Documentation** à jour : README et documentation technique.
+- **Accessibilité et robustesse** : gestion des erreurs explicites, messages clairs, respect des standards Azure DevOps.
+
+---
+
+## 13. Annexes
+
+### Ressources utiles
+
+- [Azure DevOps Custom Tasks](https://learn.microsoft.com/en-us/azure/devops/extend/develop/add-build-task)
+- [OpenAPI Generator](https://openapi-generator.tech/)
+- [azure-devops-node-api](https://github.com/microsoft/azure-devops-node-api)
+- [azure-pipelines-task-lib](https://github.com/microsoft/azure-pipelines-task-lib)
+- [ESLint](https://eslint.org/)
+- [Mocha](https://mochajs.org/)
+- [Chai](https://www.chaijs.com/)
+
+---
+
+## 14. Contact et support
+
+Pour toute question technique, contacter :  
+- **Equipe DevOps** : dev_sup_integration@zz.com
+
+---
+
+**Cette documentation est à intégrer dans le README du projet et à maintenir à jour à chaque évolution majeure.**
