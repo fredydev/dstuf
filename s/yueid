@@ -48,20 +48,23 @@ La tâche gère :
 
 ```
 custom-task/
-├── src/
-│   ├── GraduationTask.ts         # Logique principale de la tâche
-│   ├── client/
-│   │   ├── api/                  # Client OpenAPI généré (GraduationApi, Status, etc.)
-│   │   └── model/
-│   ├── test/
-│   │   └── task.test.ts          # Tests unitaires
-│   ├── task.json                 # Déclaration de la tâche Azure DevOps
-│   ├── README.md                 # Documentation utilisateur
-│   └── openapi.yaml              # Contrat OpenAPI SnapLogic
-├── dist/                         # JS compilé pour exécution
-├── package.json                  # Dépendances et scripts
+├── devops/                         # Pipelines CI/CD (NexusV2)
+│   ├── custom-task-ci.yml              # Pipeline CI : build, lint, tests, package
+│   ├── custom-task-cd-stages.yaml      # Stages et jobs de déploiement
+│   └── custom-task-cd.yaml             # Pipeline CD : inclut les templates de sécurité/réglementation + appel du template local
+├── src/                            # Code source TypeScript de la tâche
+│   ├── client/                         # Client OpenAPI généré automatiquement
+│   │   ├── api/                          # Fichiers d'API générés (GraduationApi, Status, etc.)
+│   │   └── model/                        # Modèles de données générés
+│   ├── test/                           # Tests unitaires et mocks
+│   │   └── task.test.ts                   # Cas de test principaux
+│   ├── GraduationTask.ts               # Logique principale de la tâche personnalisée
+│   ├── index.ts                        # Point d'entrée de la tâche (run)
+│   └── task.json                       # Déclaration de la tâche Azure DevOps
+├── openapi.yaml                      # Contrat OpenAPI SnapLogic (source de génération du client)
+├── README.md                         # Documentation utilisateur et technique
 ├── tsconfig.json                 # Configuration TypeScript
-└── .eslintrc.json                # Linting
+└── 
 ```
 
 ---
