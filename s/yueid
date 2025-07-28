@@ -19,6 +19,23 @@ La tâche gère :
 
 ---
 
+## ⚠️ Migration et remplacement d’une tâche existante SnapLogic
+
+> **Contexte :**
+> Cette version remplace une tâche SnapLogic déjà déployée dans l’organisation. Le fichier `task.json` conserve **l’identifiant (`id`) de la tâche existante** afin d’assurer une migration transparente pour tous les pipelines qui l’utilisent.
+>
+> **Pourquoi ce choix ?**
+> - Les pipelines Azure DevOps référencent la tâche par son `id` : aucune modification côté utilisateurs finaux.
+> - L’historique, les permissions et les configurations existantes sont conservés.
+> - Seule la logique, la sécurité et l’intégration sont modernisées.
+>
+> **Bonnes pratiques pour les développeurs :**
+> - Ne jamais changer l’`id` dans `task.json`.
+> - Mettre à jour la version (`version.Major.Minor.Patch`) à chaque évolution significative.
+> - Documenter les changements dans le changelog ou la documentation technique.
+
+---
+
 ## 2. Architecture & Flux global
 
 ```
@@ -60,10 +77,11 @@ custom-task/
 │   │   └── task.test.ts                   # Cas de test principaux
 │   ├── GraduationTask.ts               # Logique principale de la tâche personnalisée
 │   ├── index.ts                        # Point d'entrée de la tâche (run)
-│   └── task.json                       # Déclaration de la tâche Azure DevOps
+│   ├── package.json                    # Scripts (build, lint, test) utilisés en CI, dépendances, config tests unitaires
+│   ├── task.json                       # Déclaration de la tâche Azure DevOps
+│   └── tsconfig.json                   # Configuration TypeScript
 ├── openapi.yaml                      # Contrat OpenAPI SnapLogic (source de génération du client)
 ├── README.md                         # Documentation utilisateur et technique
-├── tsconfig.json                 # Configuration TypeScript
 └── 
 ```
 
