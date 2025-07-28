@@ -138,7 +138,55 @@ L’ensemble du cycle de vie de la tâche est orchestré par les pipelines YAML 
 
 ---
 
-## 11. Annexes
+## 11. Développement
+
+### Installation et outils
+- **Installer les dépendances** :
+  ```sh
+  npm install
+  ```
+- **Build local** :
+  ```sh
+  npm run build
+  ```
+- **Tests unitaires** :
+  ```sh
+  npm test
+  ```
+- **Lint** :
+  ```sh
+  npm run lint
+  ```
+- **Générer le client OpenAPI** (après modification de `openapi.yaml`) :
+  ```sh
+  npx @openapitools/openapi-generator-cli generate -i openapi.yaml -g typescript-node -o src/client --additional-properties=useSingleRequestParameter=true,typescriptThreePlus=true
+  ```
+- **Packaging local** :
+  ```sh
+  npm pack
+  ```
+
+### Créer une nouvelle version de la tâche
+- **Versionning automatique (recommandé)** :
+  - Lorsqu’un commit est fusionné sur la branche principale, le pipeline CI/CD (`custom-task-ci.yml`) synchronise automatiquement la version dans `package.json` et `task.json` grâce aux variables (`GitVersion.*`).
+  - La version suit le format sémantique `major.minor.patch`.
+  - **Ne jamais rétrograder la version**.
+  - Tout changement majeur doit être documenté dans le changelog.
+- **Versionning manuel (si besoin exceptionnel)** :
+  - Modifier la version dans `package.json` et `src/task.json` pour l’aligner.
+  - Respecter la sémantique : `major` pour rupture, `minor` pour ajout, `patch` pour correction.
+  - Commiter avec un message explicite : `chore(release): bump version to x.y.z`.
+  - Lancer le pipeline pour synchroniser et publier la nouvelle version.
+
+### Bonnes pratiques développement
+- Respecter la configuration ESLint/Prettier (voir scripts npm).
+- Ne jamais éditer manuellement le code généré (`src/client`).
+- Toujours passer par le pipeline pour garantir la cohérence et la traçabilité.
+- Documenter toute évolution majeure dans le changelog et la documentation technique.
+
+---
+
+## 12. Annexes
 
 - **Contact technique** : dev_sup_integration@zz.com
 - **Changelog** : voir fichier dédié ou section en fin de doc
