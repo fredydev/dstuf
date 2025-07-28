@@ -87,24 +87,36 @@ custom-task/
 
 ---
 
-## 7. Processus CI/CD (build, test, packaging, publication)
+## 7. Cycle CI/CD, build, versionning et publication
 
-- Orchestration complète via pipeline CI/CD (`devops/custom-task-ci.yml`)
-  - Synchronisation de version (`package.json`, `task.json`, pipeline)
-  - Génération du client, compilation, lint, tests, packaging, nettoyage des dépendances, publication
-  - Sécurité : secrets masqués dans les logs
-  - Qualité : tous les tests, lint et build via `npm run ci:all`
+L’ensemble du cycle de vie de la tâche est orchestré par les pipelines YAML du dossier `devops/` :
 
----
+- **Build, versionning, tests, lint, packaging** : tout est centralisé dans `custom-task-ci.yml`.
+    - Le build, le versionning (`package.json`, `task.json`, Git tag), le lint, les tests unitaires, le nettoyage des dépendances et le packaging sont automatisés via les scripts déclarés dans `package.json` (notamment `npm run ci:all`).
+    - La version est synchronisée automatiquement à chaque build.
+    - Les secrets sont masqués dans les logs pour la sécurité.
+- **Publication** : réalisée via le CLI `tfx` dans `custom-task-cd.yml`.
+    - Une étape dédiée permet de forcer le remplacement de la tâche existante lors du déploiement en environnement de test (`booleenForceTaskReplacement`).
+    - La publication dans Azure DevOps est donc entièrement automatisée et traçable.
 
-## 8. Versionning & migration
+### Schéma du pipeline CI/CD
 
-- L’`id` de la tâche dans `task.json` reste inchangé pour migration transparente.
-- Version (`major`, `minor`, `patch`) synchronisée automatiquement avec le pipeline CI/CD.
-- Pipelines existants bénéficient automatiquement de la nouvelle version.
-- **Bonnes pratiques** :
-  - Ne jamais baisser la version
-  - Documenter les changements majeurs
+```
+[custom-task-ci.yml]
+    |
+    |-- npm run ci:all (build, lint, test, package, versionning)
+    |
+    v
+[Artifact: package prêt à publier]
+    |
+    v
+[custom-task-cd.yml]
+    |
+    |-- (optionnel) Force delete de la tâche existante (booleenForceTaskReplacement)
+    |-- Publication via tfx-cli
+    v
+[Tâche déployée sur Azure DevOps]
+```
 
 ---
 
