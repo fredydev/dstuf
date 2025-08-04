@@ -126,7 +126,6 @@ class SonarQubeService:
             'Accept': 'application/json'
         }
         
-        print(f"🔧 Headers générés: {list(headers.keys())}")
         return headers
     
     def test_connection(self) -> Tuple[bool, Optional[str]]:
@@ -300,10 +299,14 @@ class SonarQubeService:
                 timeout=30
             )
             
+            print(f"   📏 Mesures - Code: {response.status_code}")
+            
             if not response.ok:
+                print(f"   ❌ Erreur mesures: {response.status_code} - {response.text[:200]}")
                 return []
             
             data = response.json()
+            print(f"   📊 Mesures trouvées: {len(data.get('component', {}).get('measures', []))}")
             measures = []
             
             for measure in data.get('component', {}).get('measures', []):
@@ -327,8 +330,10 @@ class SonarQubeService:
             return success, None, error
         
         quality_metrics = []
+        total_projects = len(projects)
         
-        for project in projects:
+        for i, project in enumerate(projects, 1):
+            print(f"📊 Analyse du projet {i}/{total_projects}: {project.name}")
             try:
                 quality_gate = self.get_project_quality_gate(project.key)
                 measures = self.get_project_measures(project.key)
@@ -353,9 +358,11 @@ class SonarQubeService:
                 )
                 
                 quality_metrics.append(metrics)
+                qg_status = quality_gate.status if quality_gate else 'NONE'
+                print(f"   ✅ Succès - Quality Gate: {qg_status}")
                 
             except Exception as e:
-                print(f"Erreur lors du traitement du projet {project.key}: {e}")
+                print(f"   ❌ Échec - {str(e)}")
                 continue
         
         return True, quality_metrics, None
