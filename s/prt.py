@@ -109,13 +109,20 @@ class SonarQubeService:
         if not self._config:
             raise ValueError("Configuration non trouvée")
         
+        # Nettoyer l'URL (enlever le trailing slash)
+        self._config.url = self._config.url.rstrip('/')
+        
         token_bytes = f"{self._config.token}:".encode('utf-8')
         token_b64 = base64.b64encode(token_bytes).decode('utf-8')
         
-        return {
+        headers = {
             'Authorization': f'Basic {token_b64}',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
         }
+        
+        print(f"🔧 Headers générés: {list(headers.keys())}")
+        return headers
     
     def test_connection(self) -> Tuple[bool, Optional[str]]:
         """Teste la connexion à SonarQube."""
@@ -123,14 +130,26 @@ class SonarQubeService:
             return False, "Configuration non trouvée"
         
         try:
+            print(f"🔗 Test de connexion vers: {self._config.url}")
+            print(f"🔑 Token utilisé: {self._config.token[:8]}...")
+            
             response = requests.get(
                 f"{self._config.url}/api/system/status",
                 headers=self._get_auth_headers(),
                 timeout=30
             )
             
+            print(f"📡 Code de réponse: {response.status_code}")
+            
             if not response.ok:
-                return False, f"HTTP {response.status_code}: {response.reason}"
+                error_msg = f"HTTP {response.status_code}: {response.reason}"
+                try:
+                    error_detail = response.text
+                    if error_detail:
+                        error_msg += f"\nDétail: {error_detail}"
+                except:
+                    pass
+                return False, error_msg
             
             data = response.json()
             if data.get('status') == 'UP':
@@ -147,14 +166,27 @@ class SonarQubeService:
             return False, None, "Configuration non trouvée"
         
         try:
+            url = f"{self._config.url}/api/projects/search?ps=500"
+            print(f"🔍 Récupération des projets: {url}")
+            
             response = requests.get(
-                f"{self._config.url}/api/projects/search?ps=500",
+                url,
                 headers=self._get_auth_headers(),
                 timeout=30
             )
             
+            print(f"📡 Code de réponse projets: {response.status_code}")
+            
             if not response.ok:
-                return False, None, f"HTTP {response.status_code}: {response.reason}"
+                error_msg = f"HTTP {response.status_code}: {response.reason}"
+                try:
+                    error_detail = response.text
+                    if error_detail:
+                        error_msg += f"\nDétail: {error_detail}"
+                        print(f"❌ Erreur détaillée: {error_detail}")
+                except:
+                    pass
+                return False, None, error_msg
             
             data = response.json()
             projects = []
@@ -169,6 +201,7 @@ class SonarQubeService:
                 )
                 projects.append(project)
             
+            print(f"✅ {len(projects)} projets trouvés")
             return True, projects, None
             
         except requests.exceptions.RequestException as e:
