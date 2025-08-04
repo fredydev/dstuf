@@ -14,6 +14,7 @@ class SonarQubeConfig:
     """Configuration pour la connexion SonarQube."""
     url: str
     token: str
+    organization: str = ""
 
 
 @dataclass
@@ -87,6 +88,9 @@ class SonarQubeService:
         try:
             with open(self.CONFIG_FILE, 'r') as f:
                 data = json.load(f)
+                # Assurer la compatibilité avec les anciennes configs
+                if 'organization' not in data:
+                    data['organization'] = ""
                 self._config = SonarQubeConfig(**data)
         except FileNotFoundError:
             self._config = None
@@ -97,7 +101,8 @@ class SonarQubeService:
         with open(self.CONFIG_FILE, 'w') as f:
             json.dump({
                 'url': config.url,
-                'token': config.token
+                'token': config.token,
+                'organization': config.organization
             }, f, indent=2)
     
     def get_config(self) -> Optional[SonarQubeConfig]:
@@ -166,12 +171,18 @@ class SonarQubeService:
             return False, None, "Configuration non trouvée"
         
         try:
-            url = f"{self._config.url}/api/projects/search?ps=500"
+            url = f"{self._config.url}/api/projects/search"
+            params = {'ps': '500'}
+            if self._config.organization:
+                params['organization'] = self._config.organization
+                
             print(f"🔍 Récupération des projets: {url}")
+            print(f"📋 Paramètres: {params}")
             
             response = requests.get(
                 url,
                 headers=self._get_auth_headers(),
+                params=params,
                 timeout=30
             )
             
@@ -213,9 +224,13 @@ class SonarQubeService:
             return None
         
         try:
+            params = {'projectKey': project_key}
+            if self._config.organization:
+                params['organization'] = self._config.organization
+                
             response = requests.get(
                 f"{self._config.url}/api/qualitygates/project_status",
-                params={'projectKey': project_key},
+                params=params,
                 headers=self._get_auth_headers(),
                 timeout=30
             )
@@ -271,12 +286,16 @@ class SonarQubeService:
         ]
         
         try:
+            params = {
+                'component': project_key,
+                'metricKeys': ','.join(metrics)
+            }
+            if self._config.organization:
+                params['organization'] = self._config.organization
+                
             response = requests.get(
                 f"{self._config.url}/api/measures/component",
-                params={
-                    'component': project_key,
-                    'metricKeys': ','.join(metrics)
-                },
+                params=params,
                 headers=self._get_auth_headers(),
                 timeout=30
             )
