@@ -15,6 +15,7 @@ def debug_connection():
     # Demander les paramètres
     url = input("URL SonarQube (ex: https://sonarqube.example.com): ").strip()
     token = input("Token d'authentification: ").strip()
+    organization = input("Organisation (optionnel): ").strip()
     
     # Nettoyer l'URL
     url = url.rstrip('/')
@@ -22,6 +23,7 @@ def debug_connection():
     print(f"\n📋 Configuration:")
     print(f"URL: {url}")
     print(f"Token: {token[:8]}...")
+    print(f"Organisation: {organization if organization else 'Non spécifiée'}")
     
     # Test 1: Vérification de l'URL
     print(f"\n🧪 Test 1: Vérification de l'URL de base")
@@ -67,9 +69,14 @@ def debug_connection():
     # Test 4: API projects/search
     print(f"\n🧪 Test 4: API projects/search")
     try:
+        params = {'ps': '10'}
+        if organization:
+            params['organization'] = organization
+            
         response = requests.get(
-            f"{url}/api/projects/search?ps=10",
+            f"{url}/api/projects/search",
             headers=headers,
+            params=params,
             timeout=30
         )
         print(f"Code de réponse: {response.status_code}")
@@ -89,7 +96,7 @@ def debug_connection():
     print(f"\n🧪 Test 5: Test avec SonarQubeService")
     try:
         service = SonarQubeService()
-        config = SonarQubeConfig(url=url, token=token)
+        config = SonarQubeConfig(url=url, token=token, organization=organization)
         service.save_config(config)
         
         success, error = service.test_connection()
