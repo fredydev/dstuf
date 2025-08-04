@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+
 @dataclass
 class SonarQubeConfig:
     """Configuration pour la connexion SonarQube."""
@@ -274,7 +275,7 @@ class SonarQubeService:
         metrics = [
             'coverage',
             'duplicated_lines_density',
-            'maintainability_rating',
+            'sqale_rating',  # Changé de maintainability_rating
             'reliability_rating',
             'security_rating',
             'vulnerabilities',
@@ -346,7 +347,7 @@ class SonarQubeService:
                     quality_gate_status=quality_gate.status if quality_gate else 'NONE',
                     coverage=measure_map.get('coverage'),
                     duplicated_lines_density=measure_map.get('duplicated_lines_density'),
-                    maintainability_rating=measure_map.get('maintainability_rating'),
+                    maintainability_rating=measure_map.get('sqale_rating'),
                     reliability_rating=measure_map.get('reliability_rating'),
                     security_rating=measure_map.get('security_rating'),
                     vulnerabilities=measure_map.get('vulnerabilities'),
