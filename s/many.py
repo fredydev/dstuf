@@ -404,6 +404,7 @@ CLASSIFICATION DES PROJETS:
     parser.add_argument('--classify', action='store_true', help='Classification des projets selon leur intégration SonarQube')
     parser.add_argument('--export-classification-csv', nargs='?', const=True, help='Export CSV de la classification (fichier optionnel)')
     parser.add_argument('--export-classification-json', nargs='?', const=True, help='Export JSON de la classification (fichier optionnel)')
+    parser.add_argument('--debug', action='store_true', help='Active le mode debug pour afficher les détails des projets')
     
     args = parser.parse_args()
     
@@ -432,7 +433,7 @@ CLASSIFICATION DES PROJETS:
     # Mode classification des projets
     if args.classify:
         print("🔍 Classification des projets selon leur intégration SonarQube...")
-        success, classification, error = service.classify_projects()
+        success, classification, error = service.classify_projects(debug=args.debug)
         
         if not success:
             print(f"❌ Erreur lors de la classification: {error}")
