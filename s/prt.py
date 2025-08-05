@@ -494,8 +494,8 @@ class SonarQubeService:
             configured_inactive_projects = []
             
             # Date limite pour considérer une analyse comme récente (30 jours)
-            from datetime import datetime, timedelta
-            thirty_days_ago = datetime.now() - timedelta(days=30)
+            from datetime import datetime, timedelta, timezone
+            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
             
             # Classification en parallèle pour optimiser la performance
             def classify_single_project(project):
