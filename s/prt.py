@@ -449,7 +449,7 @@ class SonarQubeService:
         ratings = {'1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E'}
         return ratings.get(rating, rating)
     
-    def classify_projects(self) -> Tuple[bool, Optional[ProjectClassification], Optional[str]]:
+    def classify_projects(self, debug: bool = False) -> Tuple[bool, Optional[ProjectClassification], Optional[str]]:
         """
         Classifie tous les projets selon leur statut d'intégration SonarQube.
         
@@ -518,48 +518,60 @@ class SonarQubeService:
                     coverage_float = float(coverage) if coverage else None
                     duplicated_lines_float = float(duplicated_lines) if duplicated_lines else None
                     bugs_int = int(bugs) if bugs and bugs.isdigit() else 0
-                     vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
-                     code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
-                     
-                     # Vérifier si l'analyse est récente
-                     has_recent_analysis = False
-                     if project.last_analysis_date:
-                         try:
-                             # Format attendu: "2024-01-15T10:30:45+0000"
-                             analysis_date = datetime.fromisoformat(
-                                 project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
-                             )
-                             has_recent_analysis = analysis_date > thirty_days_ago
-                         except ValueError:
-                             # Si le parsing échoue, considérer comme ancienne
-                             has_recent_analysis = False
-                     
-                     # Vérifier si le projet a des métriques significatives
-                     has_metrics = lines_of_code_int > 0
-                     
-                     # Déterminer le statut
-                     if has_recent_analysis and has_metrics:
-                         status = 'active'
-                     else:
-                         status = 'configured_inactive'
-                     
-                     # Créer l'objet de classification
-                     classification_status = ProjectClassificationStatus(
-                         project_key=project.key,
-                         project_name=project.name,
-                         last_analysis_date=project.last_analysis_date,
-                         lines_of_code=lines_of_code_int,
-                         coverage=coverage_float,
-                         duplicated_lines_percent=duplicated_lines_float,
-                         bugs=bugs_int,
-                         vulnerabilities=vulnerabilities_int,
-                         code_smells=code_smells_int,
-                         has_recent_analysis=has_recent_analysis,
-                         has_metrics=has_metrics,
-                         status=status
-                     )
-                     
-                     return classification_status
+                    vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
+                    code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
+                    
+                    # Vérifier si l'analyse est récente
+                    has_recent_analysis = False
+                    if project.last_analysis_date:
+                        try:
+                            # Format attendu: "2024-01-15T10:30:45+0000"
+                            analysis_date = datetime.fromisoformat(
+                                project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
+                            )
+                            has_recent_analysis = analysis_date > thirty_days_ago
+                        except ValueError:
+                            # Si le parsing échoue, considérer comme ancienne
+                            has_recent_analysis = False
+                    
+                    # Vérifier si le projet a des métriques significatives
+                    has_metrics = lines_of_code_int > 0
+                    
+                    # Debug information if requested
+                    if debug:
+                        print(f"\n🔍 DEBUG - Projet: {project.name}")
+                        print(f"   📅 Date analyse: {project.last_analysis_date}")
+                        print(f"   📏 Lignes de code: {lines_of_code_int}")
+                        print(f"   ⏰ Analyse récente (< 30j): {has_recent_analysis}")
+                        print(f"   📊 A des métriques (ncloc > 0): {has_metrics}")
+                    
+                    # Déterminer le statut
+                    if has_recent_analysis and has_metrics:
+                        status = 'active'
+                    else:
+                        status = 'configured_inactive'
+                    
+                    if debug:
+                        print(f"   🏷️  Statut final: {status}")
+                        print("   " + "="*50)
+                    
+                    # Créer l'objet de classification
+                    classification_status = ProjectClassificationStatus(
+                        project_key=project.key,
+                        project_name=project.name,
+                        last_analysis_date=project.last_analysis_date,
+                        lines_of_code=lines_of_code_int,
+                        coverage=coverage_float,
+                        duplicated_lines_percent=duplicated_lines_float,
+                        bugs=bugs_int,
+                        vulnerabilities=vulnerabilities_int,
+                        code_smells=code_smells_int,
+                        has_recent_analysis=has_recent_analysis,
+                        has_metrics=has_metrics,
+                        status=status
+                    )
+                    
+                    return classification_status
                      
                  except Exception as e:
                      print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
