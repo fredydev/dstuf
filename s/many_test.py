@@ -156,8 +156,8 @@ class TestMainFunctions:
                 content = f.read()
                 assert "active1" in content
                 assert "inactive1" in content
-                assert "active" in content
-                assert "configured_inactive" in content
+                assert "Actif" in content
+                assert "Configuré mais Inactif" in content
         finally:
             if os.path.exists(temp_filename):
                 os.remove(temp_filename)
@@ -188,17 +188,15 @@ class TestMainCLI:
     
     @patch('sys.argv', ['main.py'])
     @patch.object(SonarQubeService, 'get_config')
-    @patch.object(SonarQubeService, 'test_connection')
     @patch.object(SonarQubeService, 'get_all_projects_quality_metrics')
     @patch('builtins.print')
-    def test_main_default_behavior(self, mock_print, mock_get_metrics, mock_test_conn, mock_get_config):
+    def test_main_default_behavior(self, mock_print, mock_get_metrics, mock_get_config):
         """Test main function default behavior"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = True
         mock_get_metrics.return_value = (True, [
             QualityMetrics(
                 project_key="test_project",
@@ -220,7 +218,6 @@ class TestMainCLI:
         
         # Verify calls were made
         mock_get_config.assert_called_once()
-        mock_test_conn.assert_called_once()
         mock_get_metrics.assert_called_once()
         
         # Verify output contains expected information
@@ -230,17 +227,15 @@ class TestMainCLI:
     
     @patch('sys.argv', ['main.py', '--classify'])
     @patch.object(SonarQubeService, 'get_config')
-    @patch.object(SonarQubeService, 'test_connection')
     @patch.object(SonarQubeService, 'classify_projects')
     @patch('builtins.print')
-    def test_main_classify_option(self, mock_print, mock_classify, mock_test_conn, mock_get_config):
+    def test_main_classify_option(self, mock_print, mock_classify, mock_get_config):
         """Test main function with classify option"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = True
         mock_classify.return_value = (True, ProjectClassification(
             total=0,
             active=0,
@@ -256,17 +251,15 @@ class TestMainCLI:
     
     @patch('sys.argv', ['main.py', '--export-csv', 'test_output.csv'])
     @patch.object(SonarQubeService, 'get_config')
-    @patch.object(SonarQubeService, 'test_connection')
     @patch.object(SonarQubeService, 'get_all_projects_quality_metrics')
     @patch('main.export_to_csv')
-    def test_main_export_csv(self, mock_export_csv, mock_get_metrics, mock_test_conn, mock_get_config):
+    def test_main_export_csv(self, mock_export_csv, mock_get_metrics, mock_get_config):
         """Test main function with CSV export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = True
         mock_get_metrics.return_value = (True, [], None)
         
         main()
@@ -276,17 +269,15 @@ class TestMainCLI:
     
     @patch('sys.argv', ['main.py', '--export-json', 'test_output.json'])
     @patch.object(SonarQubeService, 'get_config')
-    @patch.object(SonarQubeService, 'test_connection')
     @patch.object(SonarQubeService, 'get_all_projects_quality_metrics')
     @patch('main.export_to_json')
-    def test_main_export_json(self, mock_export_json, mock_get_metrics, mock_test_conn, mock_get_config):
+    def test_main_export_json(self, mock_export_json, mock_get_metrics, mock_get_config):
         """Test main function with JSON export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = True
         mock_get_metrics.return_value = (True, [], None)
         
         main()
@@ -296,17 +287,15 @@ class TestMainCLI:
     
     @patch('sys.argv', ['main.py', '--classify', '--export-classification-csv', 'classification.csv'])
     @patch.object(SonarQubeService, 'get_config')
-    @patch.object(SonarQubeService, 'test_connection')
     @patch.object(SonarQubeService, 'classify_projects')
     @patch('main.export_classification_to_csv')
-    def test_main_classify_export_csv(self, mock_export_csv, mock_classify, mock_test_conn, mock_get_config):
+    def test_main_classify_export_csv(self, mock_export_csv, mock_classify, mock_get_config):
         """Test main function with classify and CSV export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = True
         classification = ProjectClassification(
             total=0,
             active=0,
@@ -335,7 +324,7 @@ class TestMainCLI:
         output = " ".join(print_calls)
         assert "configuration" in output.lower()
     
-    @patch('sys.argv', ['main.py'])
+    @patch('sys.argv', ['main.py', '--test-connection'])
     @patch.object(SonarQubeService, 'get_config')
     @patch.object(SonarQubeService, 'test_connection')
     @patch('builtins.print')
@@ -345,14 +334,14 @@ class TestMainCLI:
             url="http://localhost:9000",
             token="test_token"
         )
-        mock_test_conn.return_value = False
+        mock_test_conn.return_value = (False, "Connection error")
         
         main()
         
         # Verify error message was printed
         print_calls = [call[0][0] for call in mock_print.call_args_list]
         output = " ".join(print_calls)
-        assert "connection" in output.lower() or "failed" in output.lower()
+        assert "connexion" in output.lower() or "échec" in output.lower()
 
 
 class TestErrorHandling:
@@ -383,7 +372,7 @@ class TestErrorHandling:
             configured_inactive_projects=[]
         )
         
-        with pytest.raises(Exception):
+        with pytest.raises((OSError, IOError, FileNotFoundError)):
             export_classification_to_csv(classification, invalid_path)
 
 
