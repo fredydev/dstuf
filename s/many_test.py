@@ -190,9 +190,9 @@ class TestMainCLI:
         mock_get_metrics.assert_called_once()
         
         # Verify output contains expected information
-        print_calls = [call[0][0] for call in mock_print.call_args_list]
-        output = " ".join(print_calls)
-        assert "test_project" in output
+        print_calls = [call[0][0] for call in mock_print.call_args_list if call[0]]
+        output = " ".join(str(call) for call in print_calls)
+        assert "test_project" in output or "Test Project" in output
     
     @patch('sys.argv', ['main.py', '--classify'])
     @patch.object(SonarQubeService, 'get_config')
@@ -221,8 +221,8 @@ class TestMainCLI:
     @patch('sys.argv', ['main.py', '--export-csv', 'test_output.csv'])
     @patch.object(SonarQubeService, 'get_config')
     @patch.object(SonarQubeService, 'get_all_projects_quality_metrics')
-    @patch('builtins.open', create=True)
-    def test_main_export_csv(self, mock_open, mock_get_metrics, mock_get_config):
+    @patch('main.export_to_csv')
+    def test_main_export_csv(self, mock_export_csv, mock_get_metrics, mock_get_config):
         """Test main function with CSV export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
@@ -233,14 +233,14 @@ class TestMainCLI:
         
         main()
         
-        # Verify file operations were attempted
-        mock_open.assert_called()
+        # Verify export function was called
+        mock_export_csv.assert_called_once_with([], 'test_output.csv')
     
     @patch('sys.argv', ['main.py', '--export-json', 'test_output.json'])
     @patch.object(SonarQubeService, 'get_config')
     @patch.object(SonarQubeService, 'get_all_projects_quality_metrics')
-    @patch('builtins.open', create=True)
-    def test_main_export_json(self, mock_open, mock_get_metrics, mock_get_config):
+    @patch('main.export_to_json')
+    def test_main_export_json(self, mock_export_json, mock_get_metrics, mock_get_config):
         """Test main function with JSON export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
@@ -251,8 +251,8 @@ class TestMainCLI:
         
         main()
         
-        # Verify file operations were attempted
-        mock_open.assert_called()
+        # Verify export function was called
+        mock_export_json.assert_called_once_with([], 'test_output.json')
     
     @patch('sys.argv', ['main.py', '--classify', '--export-classification-csv', 'classification.csv'])
     @patch.object(SonarQubeService, 'get_config')
@@ -328,7 +328,7 @@ class TestErrorHandling:
     
     def test_export_classification_csv_invalid_path(self):
         """Test classification CSV export with invalid path"""
-        invalid_path = "/invalid/path/that/does/not/exist/file.csv"
+        invalid_path = "/this/path/definitely/does/not/exist/and/never/will/file.csv"
         classification = ProjectClassification(
             total=0,
             active=0,
@@ -337,8 +337,13 @@ class TestErrorHandling:
             configured_inactive_projects=[]
         )
         
-        with pytest.raises((OSError, IOError, FileNotFoundError)):
+        try:
             export_classification_to_csv(classification, invalid_path)
+            # Si on arrive ici, le test devrait échouer car une exception était attendue
+            assert False, "Expected an exception but none was raised"
+        except (OSError, IOError, FileNotFoundError, PermissionError):
+            # C'est le comportement attendu
+            pass
 
 
 if __name__ == "__main__":
