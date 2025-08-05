@@ -1,3 +1,26 @@
+#!/usr/bin/env python3
+"""
+SonarQube Quality Metrics Extractor
+
+Script pour extraire les métriques de qualité des projets SonarQube.
+Supporte également la classification des projets selon leur intégration SonarQube.
+"""
+
+import argparse
+import json
+import csv
+import sys
+import os
+from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from sonar_qube_service import SonarQubeService, QualityMetrics, ProjectClassification, SonarQubeConfig
+
+
 def print_stats(metrics):
     """Affiche les statistiques des métriques."""
     total = len(metrics)
@@ -13,8 +36,70 @@ def print_stats(metrics):
     print(f"📈 Taux de réussite: {(passed/total*100):.1f}%" if total > 0 else "N/A")
 
 
+def export_to_csv_incremental(service, projects, filename=None):
+    """Exporte les métriques vers CSV de manière incrémentale avec barre de progression."""
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"nexus_quality_metrics_{timestamp}.csv"
+    
+    headers = [
+        'Projet', 'Clé', 'Quality Gate', 'Couverture', 'Duplication',
+        'Maintenabilité', 'Fiabilité', 'Sécurité', 'Vulnérabilités',
+        'Bugs', 'Code Smells', 'Dette technique', 'Lignes de code',
+        'Dernière analyse'
+    ]
+    
+    total_projects = len(projects)
+    processed = 0
+    
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile, delimiter=';')
+        writer.writerow(headers)
+        
+        # Parallélisation avec ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            with tqdm(total=total_projects, desc="Export CSV", 
+                     bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
+                
+                future_to_project = {
+                    executor.submit(service.get_project_quality_metrics_safe, project): project 
+                    for project in projects
+                }
+                
+                for future in future_to_project:
+                    try:
+                        metrics = future.result(timeout=60)
+                        if metrics:
+                            row = [
+                                metrics.project_name,
+                                metrics.project_key,
+                                metrics.quality_gate_status,
+                                metrics.coverage or '',
+                                metrics.duplicated_lines_density or '',
+                                SonarQubeService.get_rating_label(metrics.maintainability_rating),
+                                SonarQubeService.get_rating_label(metrics.reliability_rating),
+                                SonarQubeService.get_rating_label(metrics.security_rating),
+                                metrics.vulnerabilities or '',
+                                metrics.bugs or '',
+                                metrics.code_smells or '',
+                                SonarQubeService.format_technical_debt(metrics.technical_debt),
+                                metrics.lines_of_code or '',
+                                metrics.last_analysis_date or ''
+                            ]
+                            writer.writerow(row)
+                            csvfile.flush()  # Force l'écriture immédiate
+                            processed += 1
+                            pbar.set_postfix({"Sauvés": processed, "Dernière": metrics.project_name[:15] + "..."})
+                        pbar.update(1)
+                    except Exception as e:
+                        project = future_to_project[future]
+                        print(f"\n❌ Erreur {project.name}: {str(e)}")
+                        pbar.update(1)
+    
+    print(f"\n📄 Export CSV sauvegardé: {filename} ({processed}/{total_projects} projets)")
+
 def export_to_csv(metrics, filename=None):
-    """Exporte les métriques vers un fichier CSV."""
+    """Exporte les métriques vers un fichier CSV (version classique)."""
     if not filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"nexus_quality_metrics_{timestamp}.csv"
@@ -377,34 +462,77 @@ CLASSIFICATION DES PROJETS:
         print("✅ Classification terminée avec succès!")
         return 0
     
-    # Mode classique - Récupération des métriques de qualité
-    print("🔍 Récupération des métriques de qualité...")
-    success, metrics, error = service.get_all_projects_quality_metrics()
+    # Mode classique - Optimisé pour performance
+    
+    # Choix du mode selon le nombre de projets
+    print("🔍 Récupération de la liste des projets...")
+    success, projects, error = service.get_all_projects()
     
     if not success:
         print(f"❌ Erreur: {error}")
         return 1
     
-    if not metrics:
+    if not projects:
         print("⚠️  Aucun projet trouvé.")
         return 0
     
-    # Affichage des statistiques
-    print_stats(metrics)
+    project_count = len(projects)
+    print(f"📊 {project_count} projets détectés")
     
-    # Exports
-    if args.export_csv:
-        filename = args.export_csv if isinstance(args.export_csv, str) else None
-        export_to_csv(metrics, filename)
+    # Mode optimisé pour grands volumes (>50 projets)
+    if project_count > 50:
+        print("🚀 Mode haute performance activé (export incrémental)")
+        
+        # Export CSV incrémental si demandé
+        if args.export_csv:
+            filename = args.export_csv if isinstance(args.export_csv, str) else None
+            export_to_csv_incremental(service, projects, filename)
+        
+        # Pour JSON, récupération classique (plus rapide)
+        if args.export_json or (not args.export_csv and not args.export_json):
+            print("\n🔍 Récupération des métriques pour export JSON...")
+            success, metrics, error = service.get_all_projects_quality_metrics()
+            
+            if success and metrics:
+                print_stats(metrics)
+                
+                if args.export_json:
+                    filename = args.export_json if isinstance(args.export_json, str) else None
+                    export_to_json(metrics, filename)
+                
+                # Export par défaut si aucun export spécifié
+                if not args.export_csv and not args.export_json:
+                    export_to_json(metrics)
     
-    if args.export_json:
-        filename = args.export_json if isinstance(args.export_json, str) else None
-        export_to_json(metrics, filename)
-    
-    # Export par défaut si aucun export spécifié
-    if not args.export_csv and not args.export_json:
-        export_to_csv(metrics)
-        export_to_json(metrics)
+    else:
+        # Mode classique pour petits volumes
+        print("📊 Mode classique activé")
+        success, metrics, error = service.get_all_projects_quality_metrics()
+        
+        if not success:
+            print(f"❌ Erreur: {error}")
+            return 1
+        
+        if not metrics:
+            print("⚠️  Aucune métrique trouvée.")
+            return 0
+        
+        # Affichage des statistiques
+        print_stats(metrics)
+        
+        # Exports
+        if args.export_csv:
+            filename = args.export_csv if isinstance(args.export_csv, str) else None
+            export_to_csv(metrics, filename)
+        
+        if args.export_json:
+            filename = args.export_json if isinstance(args.export_json, str) else None
+            export_to_json(metrics, filename)
+        
+        # Export par défaut si aucun export spécifié
+        if not args.export_csv and not args.export_json:
+            export_to_csv(metrics)
+            export_to_json(metrics)
     
     print("✅ Extraction terminée avec succès!")
     return 0
