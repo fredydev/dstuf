@@ -355,10 +355,12 @@ class SonarQubeService:
     def get_project_quality_metrics_safe(self, project: SonarProject) -> Optional[QualityMetrics]:
         """Récupère les métriques d'un seul projet de manière sécurisée."""
         try:
+            print(f"   🔍 Récupération métriques pour: {project.name}")
             quality_gate = self.get_project_quality_gate(project.key)
             measures = self.get_project_measures(project.key)
             
             measure_map = {m.metric: m.value for m in measures}
+            print(f"   📊 Measures trouvées: {measure_map}")
             
             metrics = QualityMetrics(
                 project_key=project.key,
@@ -499,6 +501,10 @@ class SonarQubeService:
             def classify_single_project(project):
                 """Classifie un projet unique."""
                 try:
+                    if debug:
+                        print(f"\n🔍 DEBUG - Projet: {project.name} (key: {project.key})")
+                        print(f"   📅 Date analyse projet: {project.last_analysis_date}")
+                    
                     # Récupérer les métriques complètes du projet (comme le scan normal)
                     quality_metrics = self.get_project_quality_metrics_safe(project)
                     
