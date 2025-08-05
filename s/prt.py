@@ -579,18 +579,18 @@ class SonarQubeService:
                         has_recent_analysis=has_recent_analysis,
                         has_metrics=has_metrics,
                         status=status
-                    )
-                    
-                    return classification_status
-                     
-                 except Exception as e:
-                     print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
-                     # Retourner un statut inactif par défaut
-                     return ProjectClassificationStatus(
-                         project_key=project.key,
-                         project_name=project.name,
-                         status='configured_inactive'
                      )
+                     
+                     return classification_status
+                      
+                except Exception as e:
+                    print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
+                    # Retourner un statut inactif par défaut
+                    return ProjectClassificationStatus(
+                        project_key=project.key,
+                        project_name=project.name,
+                        status='configured_inactive'
+                    )
             
             # Exécution parallèle de la classification
             with ThreadPoolExecutor(max_workers=10) as executor:
