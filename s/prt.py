@@ -4,10 +4,13 @@ Service SonarQube pour extraire les métriques de qualité des projets.
 import json
 import base64
 import requests
+import asyncio
+import aiohttp
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime
-
+from tqdm import tqdm
 
 
 @dataclass
@@ -349,8 +352,39 @@ class SonarQubeService:
             print(f"Erreur lors de la récupération des mesures pour {project_key}: {e}")
             return []
     
+    def get_project_quality_metrics_safe(self, project: SonarProject) -> Optional[QualityMetrics]:
+        """Récupère les métriques d'un seul projet de manière sécurisée."""
+        try:
+            quality_gate = self.get_project_quality_gate(project.key)
+            measures = self.get_project_measures(project.key)
+            
+            measure_map = {m.metric: m.value for m in measures}
+            
+            metrics = QualityMetrics(
+                project_key=project.key,
+                project_name=project.name,
+                quality_gate_status=quality_gate.status if quality_gate else 'NONE',
+                coverage=measure_map.get('coverage'),
+                duplicated_lines_density=measure_map.get('duplicated_lines_density'),
+                maintainability_rating=measure_map.get('sqale_rating'),
+                reliability_rating=measure_map.get('reliability_rating'),
+                security_rating=measure_map.get('security_rating'),
+                vulnerabilities=measure_map.get('vulnerabilities'),
+                bugs=measure_map.get('bugs'),
+                code_smells=measure_map.get('code_smells'),
+                technical_debt=measure_map.get('sqale_index'),
+                lines_of_code=measure_map.get('ncloc'),
+                last_analysis_date=project.last_analysis_date
+            )
+            
+            return metrics
+            
+        except Exception as e:
+            print(f"   ❌ Échec {project.name}: {str(e)}")
+            return None
+
     def get_all_projects_quality_metrics(self) -> Tuple[bool, Optional[List[QualityMetrics]], Optional[str]]:
-        """Récupère les métriques de qualité de tous les projets."""
+        """Récupère les métriques de qualité de tous les projets avec parallélisation."""
         success, projects, error = self.get_all_projects()
         if not success or not projects:
             return success, None, error
@@ -358,39 +392,34 @@ class SonarQubeService:
         quality_metrics = []
         total_projects = len(projects)
         
-        for i, project in enumerate(projects, 1):
-            print(f"📊 Analyse du projet {i}/{total_projects}: {project.name}")
-            try:
-                quality_gate = self.get_project_quality_gate(project.key)
-                measures = self.get_project_measures(project.key)
-                
-                measure_map = {m.metric: m.value for m in measures}
-                
-                metrics = QualityMetrics(
-                    project_key=project.key,
-                    project_name=project.name,
-                    quality_gate_status=quality_gate.status if quality_gate else 'NONE',
-                    coverage=measure_map.get('coverage'),
-                    duplicated_lines_density=measure_map.get('duplicated_lines_density'),
-                    maintainability_rating=measure_map.get('sqale_rating'),
-                    reliability_rating=measure_map.get('reliability_rating'),
-                    security_rating=measure_map.get('security_rating'),
-                    vulnerabilities=measure_map.get('vulnerabilities'),
-                    bugs=measure_map.get('bugs'),
-                    code_smells=measure_map.get('code_smells'),
-                    technical_debt=measure_map.get('sqale_index'),
-                    lines_of_code=measure_map.get('ncloc'),
-                    last_analysis_date=project.last_analysis_date
-                )
-                
-                quality_metrics.append(metrics)
-                qg_status = quality_gate.status if quality_gate else 'NONE'
-                print(f"   ✅ Succès - Quality Gate: {qg_status}")
-                
-            except Exception as e:
-                print(f"   ❌ Échec - {str(e)}")
-                continue
+        print(f"🚀 Analyse de {total_projects} projets (parallélisée)...")
         
+        # Parallélisation avec ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # Créer la barre de progression
+            with tqdm(total=total_projects, desc="Projets analysés", 
+                     bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
+                
+                # Soumettre tous les projets
+                future_to_project = {
+                    executor.submit(self.get_project_quality_metrics_safe, project): project 
+                    for project in projects
+                }
+                
+                # Récupérer les résultats au fur et à mesure
+                for future in future_to_project:
+                    try:
+                        metrics = future.result(timeout=60)  # 60s timeout par projet
+                        if metrics:
+                            quality_metrics.append(metrics)
+                            pbar.set_postfix({"Dernière": metrics.project_name[:20] + "..."})
+                        pbar.update(1)
+                    except Exception as e:
+                        project = future_to_project[future]
+                        print(f"\n❌ Timeout/erreur {project.name}: {str(e)}")
+                        pbar.update(1)
+        
+        print(f"\n✅ {len(quality_metrics)}/{total_projects} projets analysés avec succès")
         return True, quality_metrics, None
     
     @staticmethod
