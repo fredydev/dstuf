@@ -64,6 +64,9 @@ class TestMainFunctions:
         ]
         
         self.sample_classification = ProjectClassification(
+            total=2,
+            active=1,
+            configured_inactive=1,
             active_projects=[
                 ProjectClassificationStatus(
                     project_key="active1",
@@ -95,11 +98,7 @@ class TestMainFunctions:
                     has_recent_analysis=False,
                     has_metrics=False
                 )
-            ],
-            total=2,
-            active=1,
-            configured_inactive=1,
-            classification_date="2024-01-01T00:00:00Z"
+            ]
         )
     
     def test_export_to_csv(self):
@@ -243,12 +242,11 @@ class TestMainCLI:
         )
         mock_test_conn.return_value = True
         mock_classify.return_value = (True, ProjectClassification(
-            active_projects=[],
-            configured_inactive_projects=[],
             total=0,
             active=0,
             configured_inactive=0,
-            classification_date="2024-01-01T00:00:00Z"
+            active_projects=[],
+            configured_inactive_projects=[]
         ), None)
         
         main()
@@ -310,12 +308,11 @@ class TestMainCLI:
         )
         mock_test_conn.return_value = True
         classification = ProjectClassification(
-            active_projects=[],
-            configured_inactive_projects=[],
             total=0,
             active=0,
             configured_inactive=0,
-            classification_date="2024-01-01T00:00:00Z"
+            active_projects=[],
+            configured_inactive_projects=[]
         )
         mock_classify.return_value = (True, classification, None)
         
@@ -379,12 +376,11 @@ class TestErrorHandling:
         """Test classification CSV export with invalid path"""
         invalid_path = "/invalid/path/that/does/not/exist/file.csv"
         classification = ProjectClassification(
-            active_projects=[],
-            configured_inactive_projects=[],
             total=0,
             active=0,
             configured_inactive=0,
-            classification_date="2024-01-01T00:00:00Z"
+            active_projects=[],
+            configured_inactive_projects=[]
         )
         
         with pytest.raises(Exception):
