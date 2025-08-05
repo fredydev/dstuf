@@ -74,6 +74,31 @@ class QualityMetrics:
     lines_of_code: Optional[str] = None
     last_analysis_date: Optional[str] = None
 
+@dataclass
+class ProjectClassificationStatus:
+    """Statut de classification d'un projet selon son intégration SonarQube."""
+    project_key: str
+    project_name: str
+    last_analysis_date: Optional[str] = None
+    lines_of_code: Optional[int] = None
+    coverage: Optional[float] = None
+    duplicated_lines_percent: Optional[float] = None
+    bugs: Optional[int] = None
+    vulnerabilities: Optional[int] = None
+    code_smells: Optional[int] = None
+    has_recent_analysis: bool = False
+    has_metrics: bool = False
+    status: str = 'unknown'  # 'active', 'configured_inactive', 'unknown'
+
+@dataclass  
+class ProjectClassification:
+    """Classification complète des projets selon leur intégration SonarQube."""
+    total: int
+    active: int
+    configured_inactive: int
+    active_projects: List[ProjectClassificationStatus]
+    configured_inactive_projects: List[ProjectClassificationStatus]
+
 
 class SonarQubeService:
     """Service pour interagir avec l'API SonarQube."""
@@ -394,3 +419,151 @@ class SonarQubeService:
         
         ratings = {'1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E'}
         return ratings.get(rating, rating)
+    
+    def classify_projects(self) -> Tuple[bool, Optional[ProjectClassification], Optional[str]]:
+        """
+        Classifie tous les projets selon leur statut d'intégration SonarQube.
+        
+        CLASSIFICATION LOGIQUE :
+        
+        1. PROJETS ACTIFS (status: 'active') :
+           - Analyse récente (< 30 jours)
+           - ET métriques présentes (lines of code > 0)
+           - ET données de qualité disponibles
+           → Projets avec pipeline SonarQube fonctionnel
+        
+        2. PROJETS CONFIGURÉS MAIS INACTIFS (status: 'configured_inactive') :
+           - Projet présent dans SonarQube
+           - MAIS analyse ancienne (> 30 jours) ou absente
+           - OU métriques vides/nulles (pas de code analysé)
+           → Projets connectés mais sans gate SonarQube active
+        
+        UTILISATION POUR ANALYSE :
+        - Export CSV : Colonne 'status' permet le filtrage
+        - Graphiques : Ratio projets actifs vs configurés
+        - Actions : Identifier les projets à réactiver
+        
+        Returns:
+            Tuple[bool, Optional[ProjectClassification], Optional[str]]: 
+            (succès, classification, erreur)
+        """
+        if not self._config:
+            return False, None, "Configuration SonarQube non trouvée"
+        
+        try:
+            print("🔍 Récupération de tous les projets...")
+            success, projects, error = self.get_all_projects()
+            
+            if not success or not projects:
+                return False, None, error or "Impossible de récupérer les projets"
+            
+            print(f"📊 Classification de {len(projects)} projets...")
+            
+            active_projects = []
+            configured_inactive_projects = []
+            
+            # Date limite pour considérer une analyse comme récente (30 jours)
+            from datetime import datetime, timedelta
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            
+            for i, project in enumerate(projects, 1):
+                print(f"🔍 Analyse projet {i}/{len(projects)}: {project.name}")
+                
+                try:
+                    # Récupérer les métriques du projet
+                    measures = self.get_project_measures(project.key)
+                    
+                    # Créer un dictionnaire des mesures
+                    measure_map = {m.metric: m.value for m in measures}
+                    
+                    # Extraire les données
+                    lines_of_code = measure_map.get('ncloc')
+                    coverage = measure_map.get('coverage')
+                    duplicated_lines = measure_map.get('duplicated_lines_density')
+                    bugs = measure_map.get('bugs')
+                    vulnerabilities = measure_map.get('vulnerabilities')
+                    code_smells = measure_map.get('code_smells')
+                    
+                    # Convertir en types appropriés
+                    lines_of_code_int = int(lines_of_code) if lines_of_code and lines_of_code.isdigit() else 0
+                    coverage_float = float(coverage) if coverage else None
+                    duplicated_lines_float = float(duplicated_lines) if duplicated_lines else None
+                    bugs_int = int(bugs) if bugs and bugs.isdigit() else 0
+                    vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
+                    code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
+                    
+                    # Vérifier si l'analyse est récente
+                    has_recent_analysis = False
+                    if project.last_analysis_date:
+                        try:
+                            # Format attendu: "2024-01-15T10:30:45+0000"
+                            analysis_date = datetime.fromisoformat(
+                                project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
+                            )
+                            has_recent_analysis = analysis_date > thirty_days_ago
+                        except ValueError:
+                            # Si le parsing échoue, considérer comme ancienne
+                            has_recent_analysis = False
+                    
+                    # Vérifier si le projet a des métriques significatives
+                    has_metrics = lines_of_code_int > 0
+                    
+                    # Déterminer le statut
+                    if has_recent_analysis and has_metrics:
+                        status = 'active'
+                    else:
+                        status = 'configured_inactive'
+                    
+                    # Créer l'objet de classification
+                    classification_status = ProjectClassificationStatus(
+                        project_key=project.key,
+                        project_name=project.name,
+                        last_analysis_date=project.last_analysis_date,
+                        lines_of_code=lines_of_code_int,
+                        coverage=coverage_float,
+                        duplicated_lines_percent=duplicated_lines_float,
+                        bugs=bugs_int,
+                        vulnerabilities=vulnerabilities_int,
+                        code_smells=code_smells_int,
+                        has_recent_analysis=has_recent_analysis,
+                        has_metrics=has_metrics,
+                        status=status
+                    )
+                    
+                    # Ajouter à la liste appropriée
+                    if status == 'active':
+                        active_projects.append(classification_status)
+                        print(f"   ✅ Actif - Analyse récente: {has_recent_analysis}, Métriques: {has_metrics}")
+                    else:
+                        configured_inactive_projects.append(classification_status)
+                        reason = "pas d'analyse récente" if not has_recent_analysis else "pas de métriques"
+                        print(f"   ⚠️  Inactif - Raison: {reason}")
+                    
+                except Exception as e:
+                    print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
+                    # Ajouter dans les inactifs par défaut
+                    classification_status = ProjectClassificationStatus(
+                        project_key=project.key,
+                        project_name=project.name,
+                        status='configured_inactive'
+                    )
+                    configured_inactive_projects.append(classification_status)
+            
+            # Créer la classification finale
+            classification = ProjectClassification(
+                total=len(projects),
+                active=len(active_projects),
+                configured_inactive=len(configured_inactive_projects),
+                active_projects=active_projects,
+                configured_inactive_projects=configured_inactive_projects
+            )
+            
+            print(f"\n📊 Classification terminée:")
+            print(f"   Total: {classification.total} projets")
+            print(f"   Actifs: {classification.active} projets ({(classification.active/classification.total*100):.1f}%)")
+            print(f"   Configurés inactifs: {classification.configured_inactive} projets ({(classification.configured_inactive/classification.total*100):.1f}%)")
+            
+            return True, classification, None
+            
+        except Exception as e:
+            return False, None, f"Erreur lors de la classification: {str(e)}"
