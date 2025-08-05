@@ -495,9 +495,9 @@ class SonarQubeService:
             from datetime import datetime, timedelta
             thirty_days_ago = datetime.now() - timedelta(days=30)
             
-            for i, project in enumerate(projects, 1):
-                print(f"🔍 Analyse projet {i}/{len(projects)}: {project.name}")
-                
+            # Classification en parallèle pour optimiser la performance
+            def classify_single_project(project):
+                """Classifie un projet unique."""
                 try:
                     # Récupérer les métriques du projet
                     measures = self.get_project_measures(project.key)
@@ -518,65 +518,92 @@ class SonarQubeService:
                     coverage_float = float(coverage) if coverage else None
                     duplicated_lines_float = float(duplicated_lines) if duplicated_lines else None
                     bugs_int = int(bugs) if bugs and bugs.isdigit() else 0
-                    vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
-                    code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
+                     vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
+                     code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
+                     
+                     # Vérifier si l'analyse est récente
+                     has_recent_analysis = False
+                     if project.last_analysis_date:
+                         try:
+                             # Format attendu: "2024-01-15T10:30:45+0000"
+                             analysis_date = datetime.fromisoformat(
+                                 project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
+                             )
+                             has_recent_analysis = analysis_date > thirty_days_ago
+                         except ValueError:
+                             # Si le parsing échoue, considérer comme ancienne
+                             has_recent_analysis = False
+                     
+                     # Vérifier si le projet a des métriques significatives
+                     has_metrics = lines_of_code_int > 0
+                     
+                     # Déterminer le statut
+                     if has_recent_analysis and has_metrics:
+                         status = 'active'
+                     else:
+                         status = 'configured_inactive'
+                     
+                     # Créer l'objet de classification
+                     classification_status = ProjectClassificationStatus(
+                         project_key=project.key,
+                         project_name=project.name,
+                         last_analysis_date=project.last_analysis_date,
+                         lines_of_code=lines_of_code_int,
+                         coverage=coverage_float,
+                         duplicated_lines_percent=duplicated_lines_float,
+                         bugs=bugs_int,
+                         vulnerabilities=vulnerabilities_int,
+                         code_smells=code_smells_int,
+                         has_recent_analysis=has_recent_analysis,
+                         has_metrics=has_metrics,
+                         status=status
+                     )
+                     
+                     return classification_status
+                     
+                 except Exception as e:
+                     print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
+                     # Retourner un statut inactif par défaut
+                     return ProjectClassificationStatus(
+                         project_key=project.key,
+                         project_name=project.name,
+                         status='configured_inactive'
+                     )
+            
+            # Exécution parallèle de la classification
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                with tqdm(total=len(projects), desc="Classification en cours", 
+                         bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]') as pbar:
                     
-                    # Vérifier si l'analyse est récente
-                    has_recent_analysis = False
-                    if project.last_analysis_date:
+                    # Soumettre tous les projets
+                    future_to_project = {
+                        executor.submit(classify_single_project, project): project 
+                        for project in projects
+                    }
+                    
+                    # Récupérer les résultats au fur et à mesure
+                    for future in future_to_project:
                         try:
-                            # Format attendu: "2024-01-15T10:30:45+0000"
-                            analysis_date = datetime.fromisoformat(
-                                project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
+                            classification_status = future.result(timeout=60)
+                            if classification_status:
+                                if classification_status.status == 'active':
+                                    active_projects.append(classification_status)
+                                    pbar.set_postfix({"Type": "Actif", "Nom": classification_status.project_name[:15] + "..."})
+                                else:
+                                    configured_inactive_projects.append(classification_status)
+                                    pbar.set_postfix({"Type": "Inactif", "Nom": classification_status.project_name[:15] + "..."})
+                            pbar.update(1)
+                        except Exception as e:
+                            project = future_to_project[future]
+                            print(f"\n❌ Timeout/erreur classification {project.name}: {str(e)}")
+                            # Ajouter dans les inactifs par défaut
+                            classification_status = ProjectClassificationStatus(
+                                project_key=project.key,
+                                project_name=project.name,
+                                status='configured_inactive'
                             )
-                            has_recent_analysis = analysis_date > thirty_days_ago
-                        except ValueError:
-                            # Si le parsing échoue, considérer comme ancienne
-                            has_recent_analysis = False
-                    
-                    # Vérifier si le projet a des métriques significatives
-                    has_metrics = lines_of_code_int > 0
-                    
-                    # Déterminer le statut
-                    if has_recent_analysis and has_metrics:
-                        status = 'active'
-                    else:
-                        status = 'configured_inactive'
-                    
-                    # Créer l'objet de classification
-                    classification_status = ProjectClassificationStatus(
-                        project_key=project.key,
-                        project_name=project.name,
-                        last_analysis_date=project.last_analysis_date,
-                        lines_of_code=lines_of_code_int,
-                        coverage=coverage_float,
-                        duplicated_lines_percent=duplicated_lines_float,
-                        bugs=bugs_int,
-                        vulnerabilities=vulnerabilities_int,
-                        code_smells=code_smells_int,
-                        has_recent_analysis=has_recent_analysis,
-                        has_metrics=has_metrics,
-                        status=status
-                    )
-                    
-                    # Ajouter à la liste appropriée
-                    if status == 'active':
-                        active_projects.append(classification_status)
-                        print(f"   ✅ Actif - Analyse récente: {has_recent_analysis}, Métriques: {has_metrics}")
-                    else:
-                        configured_inactive_projects.append(classification_status)
-                        reason = "pas d'analyse récente" if not has_recent_analysis else "pas de métriques"
-                        print(f"   ⚠️  Inactif - Raison: {reason}")
-                    
-                except Exception as e:
-                    print(f"   ❌ Erreur lors de l'analyse: {str(e)}")
-                    # Ajouter dans les inactifs par défaut
-                    classification_status = ProjectClassificationStatus(
-                        project_key=project.key,
-                        project_name=project.name,
-                        status='configured_inactive'
-                    )
-                    configured_inactive_projects.append(classification_status)
+                            configured_inactive_projects.append(classification_status)
+                            pbar.update(1)
             
             # Créer la classification finale
             classification = ProjectClassification(
