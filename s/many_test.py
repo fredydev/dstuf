@@ -70,7 +70,14 @@ class TestMainFunctions:
                     project_name="Active Project 1",
                     status="active",
                     last_analysis_date="2024-01-01T00:00:00Z",
-                    reason="Recent analysis with metrics"
+                    lines_of_code=1000,
+                    coverage=85.0,
+                    duplicated_lines_percent=2.0,
+                    bugs=0,
+                    vulnerabilities=0,
+                    code_smells=5,
+                    has_recent_analysis=True,
+                    has_metrics=True
                 )
             ],
             configured_inactive_projects=[
@@ -79,10 +86,19 @@ class TestMainFunctions:
                     project_name="Inactive Project 1",
                     status="configured_inactive",
                     last_analysis_date="2023-01-01T00:00:00Z",
-                    reason="Old analysis or missing metrics"
+                    lines_of_code=500,
+                    coverage=None,
+                    duplicated_lines_percent=None,
+                    bugs=0,
+                    vulnerabilities=0,
+                    code_smells=0,
+                    has_recent_analysis=False,
+                    has_metrics=False
                 )
             ],
-            total_projects=2,
+            total=2,
+            active=1,
+            configured_inactive=1,
             classification_date="2024-01-01T00:00:00Z"
         )
     
@@ -121,7 +137,7 @@ class TestMainFunctions:
             with open(temp_filename, 'r') as f:
                 data = json.load(f)
                 assert len(data) == 2
-                assert data[0]["project_key"] == "project1"
+                assert data[0]["projectKey"] == "project1"
                 assert data[0]["coverage"] == "85.0"
         finally:
             if os.path.exists(temp_filename):
@@ -180,12 +196,11 @@ class TestMainCLI:
         """Test main function default behavior"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin",
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = True
-        mock_get_metrics.return_value = [
+        mock_get_metrics.return_value = (True, [
             QualityMetrics(
                 project_key="test_project",
                 project_name="Test Project",
@@ -200,7 +215,7 @@ class TestMainCLI:
                 security_rating="A",
                 maintainability_rating="A"
             )
-        ]
+        ], None)
         
         main()
         
@@ -223,17 +238,18 @@ class TestMainCLI:
         """Test main function with classify option"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin", 
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = True
-        mock_classify.return_value = ProjectClassification(
+        mock_classify.return_value = (True, ProjectClassification(
             active_projects=[],
             configured_inactive_projects=[],
-            total_projects=0,
+            total=0,
+            active=0,
+            configured_inactive=0,
             classification_date="2024-01-01T00:00:00Z"
-        )
+        ), None)
         
         main()
         
@@ -249,12 +265,11 @@ class TestMainCLI:
         """Test main function with CSV export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin",
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = True
-        mock_get_metrics.return_value = []
+        mock_get_metrics.return_value = (True, [], None)
         
         main()
         
@@ -270,12 +285,11 @@ class TestMainCLI:
         """Test main function with JSON export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin",
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = True
-        mock_get_metrics.return_value = []
+        mock_get_metrics.return_value = (True, [], None)
         
         main()
         
@@ -291,18 +305,19 @@ class TestMainCLI:
         """Test main function with classify and CSV export"""
         # Setup mocks
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin",
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = True
         classification = ProjectClassification(
             active_projects=[],
             configured_inactive_projects=[],
-            total_projects=0,
+            total=0,
+            active=0,
+            configured_inactive=0,
             classification_date="2024-01-01T00:00:00Z"
         )
-        mock_classify.return_value = classification
+        mock_classify.return_value = (True, classification, None)
         
         main()
         
@@ -330,9 +345,8 @@ class TestMainCLI:
     def test_main_connection_failed(self, mock_print, mock_test_conn, mock_get_config):
         """Test main function when connection fails"""
         mock_get_config.return_value = SonarQubeConfig(
-            server_url="http://localhost:9000",
-            username="admin",
-            password="admin"
+            url="http://localhost:9000",
+            token="test_token"
         )
         mock_test_conn.return_value = False
         
@@ -367,7 +381,9 @@ class TestErrorHandling:
         classification = ProjectClassification(
             active_projects=[],
             configured_inactive_projects=[],
-            total_projects=0,
+            total=0,
+            active=0,
+            configured_inactive=0,
             classification_date="2024-01-01T00:00:00Z"
         )
         
