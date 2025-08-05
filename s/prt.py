@@ -499,35 +499,45 @@ class SonarQubeService:
             def classify_single_project(project):
                 """Classifie un projet unique."""
                 try:
-                    # Récupérer les métriques du projet
-                    measures = self.get_project_measures(project.key)
+                    # Récupérer les métriques complètes du projet (comme le scan normal)
+                    quality_metrics = self.get_project_quality_metrics_safe(project)
                     
-                    # Créer un dictionnaire des mesures
-                    measure_map = {m.metric: m.value for m in measures}
+                    if not quality_metrics:
+                        # Si on ne peut pas récupérer les métriques, marquer comme inactif
+                        if debug:
+                            print(f"\n🔍 DEBUG - Projet: {project.name}")
+                            print(f"   ❌ Impossible de récupérer les métriques")
+                        return ProjectClassificationStatus(
+                            project_key=project.key,
+                            project_name=project.name,
+                            last_analysis_date=None,
+                            lines_of_code=0,
+                            coverage=None,
+                            duplicated_lines_percent=None,
+                            bugs=0,
+                            vulnerabilities=0,
+                            code_smells=0,
+                            has_recent_analysis=False,
+                            has_metrics=False,
+                            status='configured_inactive'
+                        )
                     
-                    # Extraire les données
-                    lines_of_code = measure_map.get('ncloc')
-                    coverage = measure_map.get('coverage')
-                    duplicated_lines = measure_map.get('duplicated_lines_density')
-                    bugs = measure_map.get('bugs')
-                    vulnerabilities = measure_map.get('vulnerabilities')
-                    code_smells = measure_map.get('code_smells')
-                    
-                    # Convertir en types appropriés
-                    lines_of_code_int = int(lines_of_code) if lines_of_code and lines_of_code.isdigit() else 0
-                    coverage_float = float(coverage) if coverage else None
-                    duplicated_lines_float = float(duplicated_lines) if duplicated_lines else None
-                    bugs_int = int(bugs) if bugs and bugs.isdigit() else 0
-                    vulnerabilities_int = int(vulnerabilities) if vulnerabilities and vulnerabilities.isdigit() else 0
-                    code_smells_int = int(code_smells) if code_smells and code_smells.isdigit() else 0
+                    # Utiliser les données récupérées par get_project_quality_metrics_safe
+                    lines_of_code_int = int(quality_metrics.lines_of_code) if quality_metrics.lines_of_code and quality_metrics.lines_of_code.isdigit() else 0
+                    coverage_float = float(quality_metrics.coverage) if quality_metrics.coverage else None
+                    duplicated_lines_float = float(quality_metrics.duplicated_lines_density) if quality_metrics.duplicated_lines_density else None
+                    bugs_int = int(quality_metrics.bugs) if quality_metrics.bugs and quality_metrics.bugs.isdigit() else 0
+                    vulnerabilities_int = int(quality_metrics.vulnerabilities) if quality_metrics.vulnerabilities and quality_metrics.vulnerabilities.isdigit() else 0
+                    code_smells_int = int(quality_metrics.code_smells) if quality_metrics.code_smells and quality_metrics.code_smells.isdigit() else 0
+                    last_analysis_date = quality_metrics.last_analysis_date
                     
                     # Vérifier si l'analyse est récente
                     has_recent_analysis = False
-                    if project.last_analysis_date:
+                    if last_analysis_date:
                         try:
                             # Format attendu: "2024-01-15T10:30:45+0000"
                             analysis_date = datetime.fromisoformat(
-                                project.last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
+                                last_analysis_date.replace('Z', '+00:00').replace('+0000', '+00:00')
                             )
                             has_recent_analysis = analysis_date > thirty_days_ago
                         except ValueError:
@@ -540,7 +550,7 @@ class SonarQubeService:
                     # Debug information if requested
                     if debug:
                         print(f"\n🔍 DEBUG - Projet: {project.name}")
-                        print(f"   📅 Date analyse: {project.last_analysis_date}")
+                        print(f"   📅 Date analyse: {last_analysis_date}")
                         print(f"   📏 Lignes de code: {lines_of_code_int}")
                         print(f"   ⏰ Analyse récente (< 30j): {has_recent_analysis}")
                         print(f"   📊 A des métriques (ncloc > 0): {has_metrics}")
@@ -559,7 +569,7 @@ class SonarQubeService:
                     classification_status = ProjectClassificationStatus(
                         project_key=project.key,
                         project_name=project.name,
-                        last_analysis_date=project.last_analysis_date,
+                        last_analysis_date=last_analysis_date,
                         lines_of_code=lines_of_code_int,
                         coverage=coverage_float,
                         duplicated_lines_percent=duplicated_lines_float,
